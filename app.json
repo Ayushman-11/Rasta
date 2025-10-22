@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "Community Transit",
+    "slug": "community-transit",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#14b8a6",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yourcompany.communitytransit",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "This app needs your location to show nearby buses and help you navigate.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs your location to show nearby buses and help you navigate."
+      }
+    },
+    "android": {
+      "package": "com.yourcompany.communitytransit",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "YOUR_GOOGLE_MAPS_API_KEY"
+        }
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
