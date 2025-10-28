@@ -2,11 +2,13 @@ import React from 'react';
 import { View, Text, StyleSheet, Image } from 'react-native';
 import { Marker } from 'react-native-maps';
 import { BusData } from '../../types';
+import { Svg, Circle as SvgCircle } from 'react-native-svg';
 
 interface BusMarkerProps {
   bus: BusData;
   isSelected: boolean;
   onPress: (bus: BusData) => void;
+  size: number; // New prop for dynamic sizing
 }
 
 // Helper to calculate bearing between two points
@@ -26,7 +28,7 @@ function getBearing(start: { latitude: number; longitude: number }, end: { latit
 
 // ...existing code...
 
-export function BusMarker({ bus, isSelected, onPress }: BusMarkerProps) {
+export function BusMarker({ bus, isSelected, onPress, size }: BusMarkerProps) {
   // Improved direction logic: find nearest route point, use next for bearing
   let rotation = 0;
   if (bus.coordinates && bus.coordinates.length > 1) {
@@ -62,18 +64,14 @@ export function BusMarker({ bus, isSelected, onPress }: BusMarkerProps) {
       rotation={rotation}
       flat={true}
     >
-      <View style={[styles.busContainer, isSelected && styles.busContainerSelected]}>
-        {/* Use bus clipart image, rotated by direction */}
+      <View style={[styles.markerContainer, { width: size, height: size }]}> {/* Adjust size dynamically */}
         <View style={{ transform: [{ rotate: `${rotation}deg` }] }}>
           <Image
             source={require('../../assets/illustrations/red-bus.png')}
-            style={{ width: 48, height: 28, resizeMode: 'contain' }}
+            style={[styles.busImage, { width: size, height: size }]} // Adjust size dynamically
             accessibilityLabel="Bus marker"
           />
-        </View>
-        {/* Route label */}
-        <View style={styles.busLabel}>
-          <Text style={styles.busRoute}>{bus.route}</Text>
+          <Text style={[styles.busNoText, { fontSize: size / 3 }]}>{bus.route}</Text> {/* Adjust text size dynamically */}
         </View>
       </View>
     </Marker>
@@ -81,33 +79,20 @@ export function BusMarker({ bus, isSelected, onPress }: BusMarkerProps) {
 }
 
 const styles = StyleSheet.create({
-  busContainer: {
-    alignItems: 'center',
+  markerContainer: {
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  busContainerSelected: {
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  busLabel: {
-    position: 'absolute',
-    bottom: -20,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
-    minWidth: 24,
     alignItems: 'center',
   },
-  busRoute: {
-    color: 'white',
-    fontSize: 10,
-    fontWeight: '700',
+  busImage: {
+    borderRadius: 12,
+  },
+  busNoText: {
+    position: 'absolute',
+    top: '30%',
+    left: 0,
+    right: 0,
+    textAlign: 'center',
+    fontWeight: 'bold',
+    color: '#d32f2f',
   },
 });

@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { ActivityIndicator, Text } from 'react-native';
 import { View, StyleSheet, Dimensions, Alert, Platform, TouchableOpacity } from 'react-native';
-import MapView, { Circle, PROVIDER_GOOGLE, Polyline, Marker } from 'react-native-maps';
+import MapView, { PROVIDER_GOOGLE, Circle, Polyline, Marker, Region } from 'react-native-maps';
+import MapViewCluster from 'react-native-map-clustering'; // Ensure clustering library is imported
 import { StatusBar } from 'expo-status-bar';
 import { Keyboard } from 'react-native';
 import { ArrowLeft } from 'lucide-react-native';
+import { Svg, Circle as SvgCircle } from 'react-native-svg';
 import LottieView from 'lottie-react-native';
 
 // Hooks
@@ -71,9 +73,10 @@ export default function MapScreen({ onBack, trackLiveBus, sharedBus }: MapScreen
   // Animation state
   const [busProgress, setBusProgress] = useState<{ [busId: string]: number }>({});
   const [showSuccess, setShowSuccess] = useState<{ [busId: string]: boolean }>({});
-  const [tripDirection, setTripDirection] = useState<{ [busId: string]: 'forward' | 'reverse' }>({});
+  // Remove tripDirection state, only allow forward movement
   // Route display state - persists even when panel is closed
   const [routeBus, setRouteBus] = useState<BusData | null>(null);
+  const [zoomLevel, setZoomLevel] = useState(15); // Default zoom level
 
   const {
     selectedBus,
@@ -178,29 +181,36 @@ export default function MapScreen({ onBack, trackLiveBus, sharedBus }: MapScreen
         const next: typeof prev = { ...prev };
         buses.forEach((bus) => {
           const routeLen = bus.coordinates?.length || 0;
-          const direction = tripDirection[bus.id] || 'forward';
           let newProgress = prev[bus.id] || 0;
           if (routeLen > 1) {
-            if (direction === 'forward') {
-              newProgress = Math.min(newProgress + 1, routeLen - 1);
-              if (newProgress === routeLen - 1 && !showSuccess[bus.id]) {
-                setShowSuccess((s) => ({ ...s, [bus.id]: true }));
-                setTimeout(() => {
-                  setShowSuccess((s) => ({ ...s, [bus.id]: false }));
-                  setTripDirection((d) => ({ ...d, [bus.id]: 'reverse' }));
-                  setBusProgress((p) => ({ ...p, [bus.id]: routeLen - 1 }));
-                }, 2000);
-              }
-            } else {
-              newProgress = Math.max(newProgress - 1, 0);
-              if (newProgress === 0 && !showSuccess[bus.id]) {
-                setShowSuccess((s) => ({ ...s, [bus.id]: true }));
-                setTimeout(() => {
-                  setShowSuccess((s) => ({ ...s, [bus.id]: false }));
-                  setTripDirection((d) => ({ ...d, [bus.id]: 'forward' }));
-                  setBusProgress((p) => ({ ...p, [bus.id]: 0 }));
-                }, 2000);
-              }
+            newProgress = Math.min(newProgress + 1, routeLen - 1);
+            if (newProgress === routeLen - 1 && !showSuccess[bus.id]) {
+              setShowSuccess((s) => ({ ...s, [bus.id]: true }));
+              setTimeout(() => {
+                setShowSuccess((s) => ({ ...s, [bus.id]: false }));
+                setBusProgress((p) => {
+                  const updatedProgress = { ...p };
+                  delete updatedProgress[bus.id]; // Remove bus progress
+                  return updatedProgress;
+                });
+
+                // Restart the bus journey with reversed stops and updated ETA
+                setBuses((prevBuses) => {
+                  return prevBuses.map((b) => {
+                    if (b.id === bus.id) {
+                      const reversedCoordinates = [...(b.coordinates || [])].reverse();
+                      const reversedStops = [...(b.stops || [])].reverse();
+                      return {
+                        ...b,
+                        coordinates: reversedCoordinates,
+                        stops: reversedStops,
+                        estimatedTime: `${parseInt(b.estimatedTime) + 10} mins`, // Add 10 minutes to estimated time
+                      };
+                    }
+                    return b;
+                  });
+                });
+              }, 5000); // Restart after 5 seconds
             }
             next[bus.id] = newProgress;
           }
@@ -209,7 +219,7 @@ export default function MapScreen({ onBack, trackLiveBus, sharedBus }: MapScreen
       });
     }, 2000);
     return () => clearInterval(interval);
-  }, [buses, tripDirection]);
+  }, [buses]);
 
   const handleSearchClick = () => {
     setShowSearchPanel(true);
@@ -268,6 +278,15 @@ export default function MapScreen({ onBack, trackLiveBus, sharedBus }: MapScreen
     );
   }
 
+  const handleRegionChangeComplete = (region: Region) => {
+    const zoom = Math.round(Math.log(360 / region.longitudeDelta) / Math.LN2); // Calculate zoom level
+    setZoomLevel(zoom);
+  };
+
+  const calculateMarkerSize = (zoom: number) => {
+    return Math.max(20, Math.min(60, zoom * 4)); // Adjust size based on zoom
+  };
+
   // Main map JSX (copied from previous return)
   return (
     <View style={styles.container}>
@@ -279,7 +298,7 @@ export default function MapScreen({ onBack, trackLiveBus, sharedBus }: MapScreen
         </TouchableOpacity>
       )}
       {/* Map */}
-      <MapView
+      <MapViewCluster
         ref={mapRef}
         provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
         style={styles.map}
@@ -287,6 +306,7 @@ export default function MapScreen({ onBack, trackLiveBus, sharedBus }: MapScreen
           ...userLocation,
           ...MAP_CONFIG.DEFAULT_ZOOM,
         }}
+        onRegionChangeComplete={handleRegionChangeComplete} // Track region changes
         showsUserLocation={true}
         showsMyLocationButton={false}
       >
@@ -300,7 +320,7 @@ export default function MapScreen({ onBack, trackLiveBus, sharedBus }: MapScreen
         />
 
 
-        {/* Bus markers and animated movement */}
+        {/* Bus markers with clustering */}
         {buses.map((bus) => {
           const progress = busProgress[bus.id] || 0;
           const route = bus.coordinates || [];
@@ -312,33 +332,10 @@ export default function MapScreen({ onBack, trackLiveBus, sharedBus }: MapScreen
               bus={{ ...bus, latitude: markerCoord?.latitude, longitude: markerCoord?.longitude }}
               isSelected={selectedBus?.id === bus.id}
               onPress={handleBusMarkerPress}
+              size={calculateMarkerSize(zoomLevel)} // Pass dynamic size
             />
           );
         })}
-
-        {/* Shared bus marker and route */}
-        {sharedBus && (
-          <>
-            <Marker
-              coordinate={{ latitude: sharedBus.latitude, longitude: sharedBus.longitude }}
-              title={sharedBus.route + ' (Shared)'}
-              description={`From: ${sharedBus.startPoint}\nTo: ${sharedBus.destination}\nCrowd: ${sharedBus.crowd || ''}`}
-              pinColor="#22c55e"
-            >
-              <View style={{ backgroundColor: '#22c55e', borderRadius: 16, padding: 4, borderWidth: 2, borderColor: '#fff' }}>
-                <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 12 }}>🚌</Text>
-              </View>
-            </Marker>
-            {sharedBus.coordinates && sharedBus.coordinates.length > 1 && (
-              <Polyline
-                coordinates={sharedBus.coordinates}
-                strokeColor="#22c55e"
-                strokeWidth={5}
-                zIndex={20}
-              />
-            )}
-          </>
-        )}
 
         {/* Highlight selected bus route */}
         {routeBus?.coordinates && (
@@ -362,9 +359,23 @@ export default function MapScreen({ onBack, trackLiveBus, sharedBus }: MapScreen
           </>
         )}
 
-        {/* Destination icon - show when panel is closed or when not showing success animation */}
-        {routeBus?.coordinates && !showSuccess[routeBus?.id] && (
-          <DestinationMarker coordinate={routeBus.coordinates[routeBus.coordinates.length - 1]} />
+        {/* Start and destination markers - only for focused bus */}
+        {routeBus?.coordinates && (
+          <>
+            {/* Start marker */}
+            <Marker
+              coordinate={routeBus.coordinates[0]}
+              anchor={{ x: 0.5, y: 0.5 }}
+            >
+              <Svg width={32} height={32} viewBox="0 0 32 32">
+                <SvgCircle cx={16} cy={16} r={12} stroke="#38bdf8" strokeWidth={3} fill="white" />
+                <SvgCircle cx={16} cy={16} r={6} stroke="#38bdf8" strokeWidth={3} fill="white" />
+              </Svg>
+            </Marker>
+
+            {/* Destination marker */}
+            <DestinationMarker coordinate={routeBus.coordinates[routeBus.coordinates.length - 1]} />
+          </>
         )}
 
         {/* Success animation at destination */}
@@ -372,7 +383,7 @@ export default function MapScreen({ onBack, trackLiveBus, sharedBus }: MapScreen
           showSuccess[bus.id] && bus.coordinates && (
             <Marker
               key={bus.id + '-success'}
-              coordinate={tripDirection[bus.id] === 'forward' ? bus.coordinates[bus.coordinates.length - 1] : bus.coordinates[0]}
+              coordinate={bus.coordinates[bus.coordinates.length - 1]}
               anchor={{ x: 0.5, y: 0.5 }}
             >
               <LottieView
@@ -384,7 +395,7 @@ export default function MapScreen({ onBack, trackLiveBus, sharedBus }: MapScreen
             </Marker>
           )
         ))}
-      </MapView>
+      </MapViewCluster>
 
       {/* Bus Details Popup */}
       {selectedBus && (

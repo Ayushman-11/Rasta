@@ -1,5 +1,3 @@
-
-
 # Community Transit Map App
 
 Community Transit Map is a cross-platform, community-powered bus tracking and sharing app for Kolhapur, Maharashtra. Built with React Native, Expo, and TypeScript, it enables commuters to view live bus locations, share their journeys, and access real-time crowd and route information—all on a beautiful, interactive map.
@@ -106,4 +104,25 @@ Pull requests are welcome! Please open an issue first to discuss major changes o
 ## 📄 License
 
 MIT License
-  
+
+## ✅ Completed Tasks
+
+- Fixed bus info panel not opening.
+  - Debugged and ensured the BusInfoPanel is rendered and triggered correctly in `MapScreen` and `useBusNavigation`.
+- Redesigned bus info panel UI to match the provided screenshot.
+  - Updated the panel to include arrival time at the top, share button, progress slider, travel time, and a vertical timeline with stops, times, and current/next stop highlighting.
+- Implemented clustering for bus markers to improve map clarity.
+  - Used `react-native-map-clustering` to group nearby bus markers.
+- Made bus markers responsive to zoom levels.
+  - Adjusted marker sizes dynamically based on the map's zoom level.
+- Added logic to handle bus journeys:
+  - Removed buses from the map when they reach their destination.
+  - Restarted bus journeys from the destination to the start point after a delay, reversing stops and updating the ETA.
+
+## 🚧 Remaining Work
+
+- Optimize performance for large numbers of buses on the map.
+- Add unit tests for critical components like `BusMarker` and `MapScreen`.
+- Improve error handling for edge cases (e.g., missing location permissions, network issues).
+- Enhance the UI for clustering to show the number of buses in a cluster.
+- Finalize documentation for clustering and responsive markers in `docs/`.
