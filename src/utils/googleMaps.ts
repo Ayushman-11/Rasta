@@ -1,6 +1,5 @@
 import polyline from '@mapbox/polyline';
-
-const GOOGLE_MAPS_API_KEY = 'AIzaSyBpQnI0-K5oT-a19VF84C_NeYXM6sS8kGk';
+import { GOOGLE_MAPS_API_KEY } from '@env';
 
 /**
  * Fetch a road-following polyline from Google Directions API

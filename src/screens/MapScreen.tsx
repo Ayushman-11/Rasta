@@ -30,7 +30,7 @@ const { width, height } = Dimensions.get('window');
 interface MapScreenProps {
   onBack?: () => void;
   trackLiveBus?: string | null;
-  sharedBus?: BusData | null;
+  onboardUsers?: BusData[];
 }
 
 const styles = StyleSheet.create({
@@ -61,7 +61,7 @@ const styles = StyleSheet.create({
   },
 });
 
-export default function MapScreen({ onBack, trackLiveBus, sharedBus }: MapScreenProps) {
+export default function MapScreen({ onBack, trackLiveBus, onboardUsers = [] }: MapScreenProps) {
   const { location: userLocation } = useLocation();
   const [buses, setBuses] = useState<BusData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -316,29 +316,29 @@ export default function MapScreen({ onBack, trackLiveBus, sharedBus }: MapScreen
           );
         })}
 
-        {/* Shared bus marker and route */}
-        {sharedBus && (
-          <>
+        {/* Onboard users */}
+        {onboardUsers.map((user) => (
+          <React.Fragment key={user.id}>
             <Marker
-              coordinate={{ latitude: sharedBus.latitude, longitude: sharedBus.longitude }}
-              title={sharedBus.route + ' (Shared)'}
-              description={`From: ${sharedBus.startPoint}\nTo: ${sharedBus.destination}\nCrowd: ${sharedBus.crowd || ''}`}
+              coordinate={{ latitude: user.latitude, longitude: user.longitude }}
+              title={user.route + ' (Onboard)'}
+              description={`From: ${user.startPoint}\nTo: ${user.destination}\nCrowd: ${user.crowd || ''}`}
               pinColor="#22c55e"
             >
               <View style={{ backgroundColor: '#22c55e', borderRadius: 16, padding: 4, borderWidth: 2, borderColor: '#fff' }}>
                 <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 12 }}>🚌</Text>
               </View>
             </Marker>
-            {sharedBus.coordinates && sharedBus.coordinates.length > 1 && (
+            {user.coordinates && user.coordinates.length > 1 && (
               <Polyline
-                coordinates={sharedBus.coordinates}
+                coordinates={user.coordinates}
                 strokeColor="#22c55e"
                 strokeWidth={5}
                 zIndex={20}
               />
             )}
-          </>
-        )}
+          </React.Fragment>
+        ))}
 
         {/* Highlight selected bus route */}
         {routeBus?.coordinates && (
@@ -400,6 +400,13 @@ export default function MapScreen({ onBack, trackLiveBus, sharedBus }: MapScreen
 
       {/* Nearby Buses Badge - Hidden when bus selected */}
       {!selectedBus && <NearbyBusesBadge count={buses.length} />}
+
+      {/* Onboard Count */}
+      {onboardUsers.length > 0 && (
+        <View style={{ position: 'absolute', top: 120, right: 20, backgroundColor: '#22c55e', padding: 8, borderRadius: 16 }}>
+          <Text style={{ color: '#fff', fontWeight: 'bold' }}>Onboard: {onboardUsers.length}</Text>
+        </View>
+      )}
 
       {/* Search Panel */}
       <SearchPanel

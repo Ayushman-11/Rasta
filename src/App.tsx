@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { HomeScreen } from './screens/HomeScreen';
 import MapScreen from './screens/MapScreen';
 import { BottomNav } from './components/navigation/BottomNav';
@@ -14,9 +15,22 @@ type Screen = 'home' | 'rewards' | 'grid' | 'offers' | 'support' | 'map' | 'shar
 
 function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
-  const [trackLiveBus, setTrackLiveBus] = useState<string | null>(null); // busNumber or id
-  // Shared bus state (in-memory for now)
-  const [sharedBus, setSharedBus] = useState<BusData | null>(null);
+  const [trackLiveBus, setTrackLiveBus] = useState<string | null>(null);
+  const [onboardUsers, setOnboardUsers] = useState<BusData[]>([]);
+
+  // Load onboard users
+  useEffect(() => {
+    const load = async () => {
+      const stored = await AsyncStorage.getItem('onboardUsers');
+      if (stored) setOnboardUsers(JSON.parse(stored));
+    };
+    load();
+  }, []);
+
+  // Save onboard users
+  useEffect(() => {
+    AsyncStorage.setItem('onboardUsers', JSON.stringify(onboardUsers));
+  }, [onboardUsers]);
 
   const handleNavigate = (screen: Screen) => {
     setCurrentScreen(screen);
@@ -39,9 +53,9 @@ function App() {
           />
         );
       case 'map':
-        return <MapScreen onBack={() => setCurrentScreen('home')} trackLiveBus={trackLiveBus} sharedBus={sharedBus} />;
+        return <MapScreen onBack={() => setCurrentScreen('home')} trackLiveBus={trackLiveBus} onboardUsers={onboardUsers} />;
       case 'sharebus':
-        return <ShareMyBusScreen navigation={{ goBack: () => setCurrentScreen('home') }} onShare={setSharedBus} />;
+        return <ShareMyBusScreen navigation={{ goBack: () => setCurrentScreen('home') }} onShare={(bus) => setOnboardUsers(prev => [...prev, bus])} />;
       case 'rewards':
         return (
           <View style={styles.placeholder}>
