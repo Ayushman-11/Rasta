@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import { HomeScreen } from './screens/HomeScreen';
 import MapScreen from './screens/MapScreen';
@@ -71,13 +72,13 @@ function App() {
   };
 
   return (
-    <View style={styles.container}>
+    <GestureHandlerRootView style={styles.container}>
       <StatusBar style="dark" />
       {renderScreen()}
       {currentScreen !== 'map' && (
         <BottomNav activeScreen={currentScreen} onNavigate={handleNavigate} />
       )}
-    </View>
+    </GestureHandlerRootView>
   );
 }
 

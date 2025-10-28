@@ -39,7 +39,7 @@ export const useLocation = () => {
       });
       setLoading(false);
     } catch (err) {
-      console.error('Error getting location:', err);
+  // Error getting location: err
       setError('Failed to get location');
       setLoading(false);
     }

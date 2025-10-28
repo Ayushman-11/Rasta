@@ -14,7 +14,8 @@ import { useBusNavigation } from '../hooks/useBusNavigation';
 // Components
 import { BusMarker } from '../components/map/BusMarker';
 import { DestinationMarker } from '../components/map/DestinationMarker';
-import { BusDetailsCard } from '../components/cards/BusDetailsCard';
+// import { BusDetailsCard } from '../components/cards/BusDetailsCard';
+import { BusInfoPanel } from '../components/panels/BusInfoPanel';
 import { NearbyBusesBadge } from '../components/cards/NearbyBusesBadge';
 import { SearchPanel } from '../components/search/SearchPanel';
 import { BottomNav } from '../components/navigation/BottomNav';
@@ -71,20 +72,58 @@ export default function MapScreen({ onBack, trackLiveBus, sharedBus }: MapScreen
   const [busProgress, setBusProgress] = useState<{ [busId: string]: number }>({});
   const [showSuccess, setShowSuccess] = useState<{ [busId: string]: boolean }>({});
   const [tripDirection, setTripDirection] = useState<{ [busId: string]: 'forward' | 'reverse' }>({});
+  // Route display state - persists even when panel is closed
+  const [routeBus, setRouteBus] = useState<BusData | null>(null);
 
   const {
     selectedBus,
     selectedBusIndex,
     mapRef,
     panResponder,
-    handleBusMarkerPress,
-    handleBusCardPress,
-    handlePreviousBus,
-    handleNextBus,
-    closeBusDetails,
+    handleBusMarkerPress: originalHandleBusMarkerPress,
+    handleBusCardPress: originalHandleBusCardPress,
+    handlePreviousBus: originalHandlePreviousBus,
+    handleNextBus: originalHandleNextBus,
+    closeBusDetails: originalCloseBusDetails,
     handleLocationClick,
     setSelectedBus,
   } = useBusNavigation(buses);
+
+  // Wrap the bus selection handlers to also set routeBus
+  const handleBusMarkerPress = (bus: BusData) => {
+    setRouteBus(bus);
+    originalHandleBusMarkerPress(bus);
+  };
+
+  const handleBusCardPress = (bus: BusData) => {
+    setRouteBus(bus);
+    originalHandleBusCardPress(bus);
+  };
+
+  const handlePreviousBus = () => {
+    originalHandlePreviousBus();
+    // Update routeBus to match the new selectedBus
+    if (selectedBusIndex >= 0 && buses[selectedBusIndex]) {
+      setRouteBus(buses[selectedBusIndex]);
+    }
+  };
+
+  const handleNextBus = () => {
+    originalHandleNextBus();
+    // Update routeBus to match the new selectedBus
+    if (selectedBusIndex >= 0 && buses[selectedBusIndex]) {
+      setRouteBus(buses[selectedBusIndex]);
+    }
+  };
+
+  const closeBusDetails = () => {
+    originalCloseBusDetails();
+    // Keep routeBus so the route remains visible
+  };
+
+  const clearRoute = () => {
+    setRouteBus(null);
+  };
 
   // Focus on bus if trackLiveBus is set
   useEffect(() => {
@@ -120,7 +159,7 @@ export default function MapScreen({ onBack, trackLiveBus, sharedBus }: MapScreen
           setLoading(false);
         }
       } catch (err) {
-        console.error('Error loading buses:', err);
+  // Error loading buses: err
         if (!cancelled) {
           setError(err?.message || 'Failed to load buses');
           setBuses([]);
@@ -189,8 +228,28 @@ export default function MapScreen({ onBack, trackLiveBus, sharedBus }: MapScreen
     Keyboard.dismiss();
   };
 
+  const handleFocusStop = (stopIndex: number) => {
+    if (selectedBus && selectedBus.coordinates) {
+      const coordinates = selectedBus.coordinates;
+      const stopsCount = selectedBus.stops?.length || 1;
+      // Calculate approximate coordinate index for this stop
+      const coordIndex = Math.min(Math.floor((stopIndex / (stopsCount - 1)) * (coordinates.length - 1)), coordinates.length - 1);
+      const stopCoord = coordinates[coordIndex];
+
+      if (stopCoord && mapRef.current) {
+        mapRef.current.animateToRegion({
+          latitude: stopCoord.latitude,
+          longitude: stopCoord.longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        }, MAP_CONFIG.ANIMATION_DURATION);
+      }
+    }
+  };
+
   const filteredBuses = filterBuses(buses, searchQuery);
 
+  // [MapScreen] selectedBus: selectedBus
   if (loading) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }] }>
@@ -220,7 +279,7 @@ export default function MapScreen({ onBack, trackLiveBus, sharedBus }: MapScreen
         </TouchableOpacity>
       )}
       {/* Map */}
-  <MapView
+      <MapView
         ref={mapRef}
         provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
         style={styles.map}
@@ -281,19 +340,31 @@ export default function MapScreen({ onBack, trackLiveBus, sharedBus }: MapScreen
           </>
         )}
 
-        {/* Highlight selected bus route (only remaining part) */}
-        {selectedBus?.coordinates && (
-          <Polyline
-            coordinates={selectedBus.coordinates.slice(busProgress[selectedBus.id] || 0)}
-            strokeColor="#38bdf8"
-            strokeWidth={6}
-            zIndex={10}
-          />
+        {/* Highlight selected bus route */}
+        {routeBus?.coordinates && (
+          <>
+            {/* Traveled portion - light black */}
+            {busProgress[routeBus.id] > 0 && (
+              <Polyline
+                coordinates={routeBus.coordinates.slice(0, busProgress[routeBus.id] + 1)}
+                strokeColor="#6b7280"
+                strokeWidth={4}
+                zIndex={9}
+              />
+            )}
+            {/* Remaining portion - blue */}
+            <Polyline
+              coordinates={routeBus.coordinates.slice(busProgress[routeBus.id] || 0)}
+              strokeColor="#38bdf8"
+              strokeWidth={6}
+              zIndex={10}
+            />
+          </>
         )}
 
-        {/* Hide destination icon if success animation is shown */}
-        {selectedBus?.coordinates && !showSuccess[selectedBus?.id] && (
-          <DestinationMarker coordinate={selectedBus.coordinates[selectedBus.coordinates.length - 1]} />
+        {/* Destination icon - show when panel is closed or when not showing success animation */}
+        {routeBus?.coordinates && !showSuccess[routeBus?.id] && (
+          <DestinationMarker coordinate={routeBus.coordinates[routeBus.coordinates.length - 1]} />
         )}
 
         {/* Success animation at destination */}
@@ -317,15 +388,14 @@ export default function MapScreen({ onBack, trackLiveBus, sharedBus }: MapScreen
 
       {/* Bus Details Popup */}
       {selectedBus && (
-        <BusDetailsCard
-          bus={selectedBus}
-          busIndex={selectedBusIndex}
-          totalBuses={buses.length}
-          onPrevious={handlePreviousBus}
-          onNext={handleNextBus}
-          onClose={closeBusDetails}
-          panHandlers={panResponder.panHandlers}
-        />
+        <>
+          <BusInfoPanel
+            bus={selectedBus}
+            progress={busProgress[selectedBus.id] || 0}
+            onClose={closeBusDetails}
+            onFocusStop={handleFocusStop}
+          />
+        </>
       )}
 
       {/* Nearby Buses Badge - Hidden when bus selected */}

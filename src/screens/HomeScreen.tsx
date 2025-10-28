@@ -1,4 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
+import * as Haptics from 'expo-haptics';
+import { Animated } from 'react-native';
+import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { View, Text, ScrollView, StyleSheet, Dimensions, TouchableOpacity, ImageBackground } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -53,11 +56,35 @@ export function HomeScreen(props: HomeScreenProps) {
     setNotifications((prev) => prev.filter((notif) => notif.id !== id));
   };
 
+  // Animation and haptic feedback for left swipe
+  const panRef = useRef(null);
+  const [swipeAnim] = useState(new Animated.Value(1));
+  const handleGestureEvent = (event: any) => {
+    if (event.nativeEvent.translationX < -50 && event.nativeEvent.state === State.ACTIVE) {
+      // Smooth fade out and in
+      Animated.sequence([
+        Animated.timing(swipeAnim, { toValue: 0, duration: 180, useNativeDriver: true }),
+        Animated.timing(swipeAnim, { toValue: 1, duration: 220, useNativeDriver: true })
+      ]).start();
+      // Haptic feedback
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    if (event.nativeEvent.translationX < -50 && event.nativeEvent.state === State.END) {
+      if (onNavigateToMap) onNavigateToMap();
+    }
+  };
+
   return (
-    <View style={styles.container}>
-      <StatusBar style="light" />
+    <PanGestureHandler
+      ref={panRef}
+      onGestureEvent={handleGestureEvent}
+      onHandlerStateChange={handleGestureEvent}
+      activeOffsetX={-20}
+    >
+      <Animated.View style={[styles.container, { opacity: swipeAnim }]}> 
+  <StatusBar style="light" />
       
-      {/* Enhanced Header with Pattern Background */}
+  {/* Enhanced Header with Pattern Background */}
       <View style={styles.headerContainer}>
         {/* Pattern Background Image */}
         <ImageBackground
@@ -141,7 +168,7 @@ export function HomeScreen(props: HomeScreenProps) {
               estimatedTime={bus.estimatedTime || 'Live'}
               crowdLevel={bus.passengers <= 5 ? 'Low crowd' : bus.passengers <= 15 ? 'Medium crowd' : 'High crowd'}
               stops={bus.stops}
-              onSetAlert={() => console.log('Set Alert')}
+              onSetAlert={() => {}}
               onTrackLive={() => onTrackLive && onTrackLive(bus.route)}
             />
           ))}
@@ -178,7 +205,8 @@ export function HomeScreen(props: HomeScreenProps) {
         onClose={() => setShowNotifications(false)}
         onDelete={handleDeleteNotification}
       />
-    </View>
+    </Animated.View>
+    </PanGestureHandler>
   );
 }
 
