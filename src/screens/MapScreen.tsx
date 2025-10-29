@@ -78,6 +78,23 @@ export default function MapScreen({ onBack, trackLiveBus, sharedBus }: MapScreen
   const [routeBus, setRouteBus] = useState<BusData | null>(null);
   const [zoomLevel, setZoomLevel] = useState(15); // Default zoom level
 
+  // Refs for timeout management and latest buses
+  const timeoutsRef = React.useRef<NodeJS.Timeout[]>([]);
+  const latestBusesRef = React.useRef<BusData[]>([]);
+  const selectedBusRef = React.useRef<BusData | null>(null);
+  const completedRef = React.useRef<{ [busId: string]: boolean }>({});
+
+  useEffect(() => {
+    latestBusesRef.current = buses;
+    // Remove completion entries for buses that no longer exist
+    const currentBusIds = new Set(buses.map((bus) => bus.id));
+    Object.keys(completedRef.current).forEach((busId) => {
+      if (!currentBusIds.has(busId)) {
+        delete completedRef.current[busId];
+      }
+    });
+  }, [buses]);
+
   const {
     selectedBus,
     selectedBusIndex,
@@ -91,6 +108,10 @@ export default function MapScreen({ onBack, trackLiveBus, sharedBus }: MapScreen
     handleLocationClick,
     setSelectedBus,
   } = useBusNavigation(buses);
+
+  useEffect(() => {
+    selectedBusRef.current = selectedBus;
+  }, [selectedBus]);
 
   // Wrap the bus selection handlers to also set routeBus
   const handleBusMarkerPress = (bus: BusData) => {
@@ -175,51 +196,86 @@ export default function MapScreen({ onBack, trackLiveBus, sharedBus }: MapScreen
 
   // Animate bus movement along its route
   useEffect(() => {
-    if (!buses.length) return;
-    const interval = setInterval(() => {
-      setBusProgress((prev) => {
-        const next: typeof prev = { ...prev };
-        buses.forEach((bus) => {
-          const routeLen = bus.coordinates?.length || 0;
-          let newProgress = prev[bus.id] || 0;
-          if (routeLen > 1) {
-            newProgress = Math.min(newProgress + 1, routeLen - 1);
-            if (newProgress === routeLen - 1 && !showSuccess[bus.id]) {
-              setShowSuccess((s) => ({ ...s, [bus.id]: true }));
-              setTimeout(() => {
-                setShowSuccess((s) => ({ ...s, [bus.id]: false }));
-                setBusProgress((p) => {
-                  const updatedProgress = { ...p };
-                  delete updatedProgress[bus.id]; // Remove bus progress
-                  return updatedProgress;
-                });
+    if (!latestBusesRef.current.length) return;
 
-                // Restart the bus journey with reversed stops and updated ETA
-                setBuses((prevBuses) => {
-                  return prevBuses.map((b) => {
-                    if (b.id === bus.id) {
-                      const reversedCoordinates = [...(b.coordinates || [])].reverse();
-                      const reversedStops = [...(b.stops || [])].reverse();
-                      return {
-                        ...b,
-                        coordinates: reversedCoordinates,
-                        stops: reversedStops,
-                        estimatedTime: `${parseInt(b.estimatedTime) + 10} mins`, // Add 10 minutes to estimated time
-                      };
-                    }
-                    return b;
-                  });
-                });
-              }, 5000); // Restart after 5 seconds
+    const interval = setInterval(() => {
+      try {
+        setBusProgress((prev) => {
+          const next: typeof prev = { ...prev };
+          latestBusesRef.current.forEach((bus) => {
+            const routeLen = bus.coordinates?.length || 0;
+            const currentProgress = prev[bus.id] || 0;
+
+            if (routeLen > 1) {
+              const newProgress = Math.min(currentProgress + 1, routeLen - 1);
+
+              if (newProgress === routeLen - 1 && !completedRef.current[bus.id]) {
+                completedRef.current[bus.id] = true;
+                setShowSuccess((prev) => ({ ...prev, [bus.id]: true }));
+
+                const timeoutId = setTimeout(() => {
+                  try {
+                    setShowSuccess((prev) => ({ ...prev, [bus.id]: false }));
+
+                    setBuses((prevBuses) => {
+                      const updatedBuses = prevBuses.filter((b) => b.id !== bus.id);
+
+                      if (selectedBusRef.current?.id === bus.id) {
+                        setSelectedBus(null); // Clear selectedBus if it matches the removed bus
+                      }
+
+                      return updatedBuses;
+                    });
+
+                    const restartTimeoutId = setTimeout(() => {
+                      setBuses((prevBuses) => {
+                        const busToRestart = latestBusesRef.current.find((b) => b.id === bus.id);
+                        if (!busToRestart) return prevBuses;
+
+                        const reversedCoordinates = busToRestart.coordinates ? [...busToRestart.coordinates].reverse() : [];
+                        const reversedStops = busToRestart.stops ? [...busToRestart.stops].reverse() : [];
+                        const updatedETA = parseInt(busToRestart.estimatedTime) ? `${parseInt(busToRestart.estimatedTime) + 10} mins` : '10 mins';
+
+                        return [
+                          ...prevBuses,
+                          {
+                            ...busToRestart,
+                            coordinates: reversedCoordinates,
+                            stops: reversedStops,
+                            estimatedTime: updatedETA,
+                          },
+                        ];
+                      });
+
+                      setBusProgress((p) => ({ ...p, [bus.id]: 0 })); // Reset progress
+                      completedRef.current[bus.id] = false; // Reset completed for restart
+                    }, 5000);
+
+                    timeoutsRef.current.push(restartTimeoutId);
+                  } catch (error) {
+                    console.error('Error restarting bus journey:', error);
+                  }
+                }, 5000);
+
+                timeoutsRef.current.push(timeoutId);
+              }
+
+              next[bus.id] = newProgress;
             }
-            next[bus.id] = newProgress;
-          }
+          });
+          return next;
         });
-        return next;
-      });
+      } catch (error) {
+        console.error('Error updating bus progress:', error);
+      }
     }, 2000);
-    return () => clearInterval(interval);
-  }, [buses]);
+
+    return () => {
+      clearInterval(interval);
+      timeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
+      timeoutsRef.current = [];
+    };
+  }, []);
 
   const handleSearchClick = () => {
     setShowSearchPanel(true);
@@ -328,7 +384,7 @@ export default function MapScreen({ onBack, trackLiveBus, sharedBus }: MapScreen
           if (showSuccess[bus.id]) return null;
           return (
             <BusMarker
-              key={bus.id}
+              key={`bus-marker-${bus.id}`}
               bus={{ ...bus, latitude: markerCoord?.latitude, longitude: markerCoord?.longitude }}
               isSelected={selectedBus?.id === bus.id}
               onPress={handleBusMarkerPress}
@@ -382,7 +438,7 @@ export default function MapScreen({ onBack, trackLiveBus, sharedBus }: MapScreen
         {buses.map((bus) => (
           showSuccess[bus.id] && bus.coordinates && (
             <Marker
-              key={bus.id + '-success'}
+              key={`success-animation-${bus.id}`}
               coordinate={bus.coordinates[bus.coordinates.length - 1]}
               anchor={{ x: 0.5, y: 0.5 }}
             >
